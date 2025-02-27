@@ -14,7 +14,16 @@ import time
 import random
 import boto3
 
-from senzing import G2Engine, G2Exception, G2EngineFlags, G2RetryTimeoutExceeded, G2BadInputException
+from senzing import (
+    SzConfig,
+    SzConfigManager,
+    SzEngine,
+    SzEngineFlags,
+    SzBadInputError,
+    SzRetryTimeoutExceededError,
+)
+
+import senzing_core
 
 INTERVAL = 10000
 LONG_RECORD = os.getenv("LONG_RECORD", default=300)
@@ -37,13 +46,14 @@ def process_msg(engine, msg, info):
     try:
         record = orjson.loads(msg)
         if info:
-            response = bytearray()
-            engine.addRecordWithInfo(
-                record["DATA_SOURCE"], record["RECORD_ID"], msg, response
+            response = engine.add_record(
+                record["DATA_SOURCE"], record["RECORD_ID"], msg.decode(), SzEngineFlags.SZ_WITH_INFO
             )
-            return response.decode()
+            return response
         else:
-            engine.addRecord(record["DATA_SOURCE"], record["RECORD_ID"], msg)
+            response = engine.add_record(
+                record["DATA_SOURCE"], record["RECORD_ID"], msg.decode() 
+            )
             return None
     except Exception as err:
         print(f"{err} [{msg}]", file=sys.stderr)
@@ -98,12 +108,10 @@ try:
         exit(-1)
 
     # Initialize the G2Engine
-    g2 = G2Engine()
-    g2.init("sz_sqs_consumer", engine_config, args.debugTrace)
-    logCheckTime = prevTime = time.time()
+    factory = senzing_core.SzAbstractFactoryCore("sz_sqs_consumer", engine_config, verbose_logging=args.debugTrace)
+    g2 = factory.create_engine()
 
-    senzing_governor = importlib.import_module("senzing_governor")
-    governor = senzing_governor.Governor(hint="sz_sqs_consumer")
+    logCheckTime = prevTime = time.time()
 
     sqs = boto3.client("sqs")
     queue_url = args.url
@@ -156,7 +164,7 @@ try:
                                 print(
                                     result
                                 )  # we would handle pushing to withinfo queues here BUT that is likely a second future task/executor
-                        except (G2RetryTimeoutExceeded, G2BadInputException) as err:
+                        except (SzRetryTimeoutExceededError, SzBadInputError) as err:
                             # in SQS you have to push to deadletter
                             record = orjson.loads(msg[TUPLE_MSG]["Body"])
                             print(
@@ -203,9 +211,8 @@ try:
                     ):  # log long running records
                         logCheckTime = nowTime
 
-                        response = bytearray()
-                        g2.stats(response)
-                        print(f"\n{response.decode()}\n")
+                        response = g2.get_stats()
+                        print(f"\n{response}\n")
 
                         numStuck = 0
                         numRejected = 0
@@ -237,18 +244,9 @@ try:
                                     f"All {executor._max_workers} threads are stuck on long running records"
                                 )
 
-                # Really want something that forces an "I'm alive" to the server
-                pauseSeconds = governor.govern()
-                # either governor fully triggered or our executor is full
-                # not going to get more messages
-                if pauseSeconds < 0.0:
-                    time.sleep(1)
-                    continue
                 if len(futures) >= executor._max_workers + prefetch:
                     time.sleep(1)
                     continue
-                if pauseSeconds > 0.0:
-                    time.sleep(pauseSeconds)
 
                 while len(futures) < executor._max_workers + prefetch:
                     try:
