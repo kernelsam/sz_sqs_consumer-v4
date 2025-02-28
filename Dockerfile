@@ -5,17 +5,22 @@ ARG BASE_IMAGE=senzing/senzingsdk-runtime:latest
 FROM ${BASE_IMAGE}
 
 LABEL Name="brain/sz_sqs_consumer" \
-      Maintainer="brianmacy@gmail.com" \
-      Version="DEV"
+  Maintainer="brianmacy@gmail.com" \
+  Version="DEV"
 
 USER root
 
 RUN apt-get update \
- && apt-get -y install python3 python3-pip python3-boto3 python3-psycopg2 \
- && python3 -mpip install --break-system-packages orjson \
- && apt-get -y remove build-essential python3-pip \
- && apt-get -y autoremove \
- && apt-get -y clean
+  && apt-get -y install python3 python3-pip python3-boto3 python3-psycopg2 python3-venv
+
+ENV VIRTUAL_ENV=/opt/venv
+RUN python3 -m venv $VIRTUAL_ENV
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+
+RUN python3 -mpip install --break-system-packages orjson \
+  && apt-get -y remove build-essential python3-pip \
+  && apt-get -y autoremove \
+  && apt-get -y clean
 
 COPY sz_sqs_consumer.py /app/
 
