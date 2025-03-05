@@ -47,12 +47,12 @@ def process_msg(engine, msg, info):
         record = orjson.loads(msg)
         if info:
             response = engine.add_record(
-                record["DATA_SOURCE"], record["RECORD_ID"], msg.decode(), SzEngineFlags.SZ_WITH_INFO
+                record["DATA_SOURCE"], record["RECORD_ID"], msg, SzEngineFlags.SZ_WITH_INFO
             )
             return response
         else:
             response = engine.add_record(
-                record["DATA_SOURCE"], record["RECORD_ID"], msg.decode() 
+                record["DATA_SOURCE"], record["RECORD_ID"], msg 
             )
             return None
     except Exception as err:
