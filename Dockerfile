@@ -18,6 +18,7 @@ RUN python3 -m venv $VIRTUAL_ENV
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
 RUN python3 -mpip install --break-system-packages orjson \
+  && python3 -mpip install boto3 \
   && apt-get -y remove build-essential python3-pip \
   && apt-get -y autoremove \
   && apt-get -y clean
